@@ -1,0 +1,68 @@
+-------------------------------------------------------------------------------
+                            Tema - LFA (Bonus)
+-------------------------------------------------------------------------------
+
+AUTOR: Smadu Razvan-Alexandru 335CB
+
+FISIERE INCLUSE
+  - ./antlr-4.7.1-complete.jar
+  - ./Imp.g4
+  - ./Main.java
+  - ./Makefile
+  - ./MyVisitor.java
+  - ./README
+
+RULAREA PROGRAMULUI
+  In directorul cu fisierele .class si Makefile se pune fisierul care urmeaza 
+  a fi parsat, cu numele "input" (fara ghilimele). Rezultatul se afla in 
+  fisierul "arbore" (fara ghilimele).
+
+  Rularea manuala: 
+    Se compileaza folosind comanda: 
+      $ make 
+    Se ruleaza folosind comanda:
+      $ make run
+    Se curata folosind comanda:
+      $ make clean
+  
+  Rularea automata:
+    Programul poate fi testat automat folosind checkerul pentru aceasta tema.
+    Checker-ul trebuie pus in acelasi folder cu fisierul Makefile.
+    Apoi se ruleaza checker-ul folosind comanda: 
+      $ ./checker.sh  | grep "PARSE"
+    Rezultatul o sa fie o lista in care se poate vedea rezultatul testului.
+  
+README
+  Gramatica se numeste Imp. Regulile acesteia sunt asemanatoare cu regulile din
+  IMP (din cerinta) scrise in BNF. Diferentele sunt mici, insa sunt importanta
+  pentru rulare. In primul rand, conditia care e folosita la IF si WHILE este 
+  scrisa ca o regula separata pentru a forta punerea de paranteze si creerea 
+  unui nod de tip BracketNode. Statements sunt asociative la dreapta, deci am 
+  folosit parametrul <assoc=right>. La expresiile aritmetice, ordinea a fost 
+  schimbata deoarece, in ANTLR, prioritatea este data de ordine. Astfel se 
+  determina prioritatea operatiilor. Operatiile '/' si '+' sunt asociative la 
+  stanga, deci am folosit <assoc=left>. La expresiile booleene am mers pe 
+  acelasi principiu ca la cele aritmetice. Parantezele sunt prioritare, apoi 
+  e semnul '>', apoi NOT si apoi AND. Regula noua var : VAR; este folosita 
+  pentru a creea noduri de tip var, insa intrucat apare doar la expresiile 
+  aritmetice, in AST, nodul folosit este de tip VarNode. De asemenea, am folosit
+  etichete (labels) pentru a identifica regulile din grupuri si pentru a 
+  creea noduri cu nume asemanatoare celor din AST. De asemenea am folosit si 
+  facilitatea din ANTLR 4 care permite recursivitatea-la-stanga in aceeasi 
+  regula (sursa: [1]). 
+
+  Visitorul este o clasa care extinde ImpBaseVisitor<> generat de ANTLR. Pentru 
+  fiecare nod, care este etichetat, inclusiv main, se face append la string-ul
+  care va retine reprezentarea arborelui. Functia printTabs() este din scheletul
+  oferit pentru aceasta tema. Dupa parcurgerea arborelui si generarea stringului
+  ce contine arborele, se scrie in fisier si se inchide fisierul. Fisierul 
+  Main.java este cel din exemplul pentru aceasta tema, cu mici modificari 
+  (stergerea de variabile nefolosite si adaptarea pe visitor-ul folosit in 
+  tema). 
+  
+  De asemenea, se poate schimba numele fisierului de input si cel de output, 
+  prin schimbarea variabilelor statice din clasa Main. 
+
+REFERINTA
+  [1] https://stackoverflow.com/questions/26460013/antlr4-mutually-left-recursive-error-when-parsing
+  

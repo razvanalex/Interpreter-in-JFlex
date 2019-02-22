@@ -1,0 +1,393 @@
+-------------------------------------------------------------------------------
+                                 Tema - LFA
+-------------------------------------------------------------------------------
+
+AUTOR: Smadu Razvan-Alexandru 335CB
+
+FISIERE INCLUSE
+  - ./DivideByZero.java
+  - ./Expression.java
+  - ./ExpressionVisitor.java
+  - ./IVisitableArith.java
+  - ./IVisitableBool.java
+  - ./IVisitableStmt.java
+  - ./IVisitor.java
+  - ./Lexer.flex
+  - ./Lexer.java
+  - ./Main.java
+  - ./Makefile
+  - ./README
+  - ./UnassignedVar.java
+
+README
+  Descriere generala
+    Parsarea se realizeaza folosind un lexer care parseaza tokenii, iar pentru
+    fiecare token in parte fie se pune o expresie corespunzator pe stiva, fie se 
+    realizeaza niste prelucrari. Pe stiva se afla intotdeauna arbori de parsare
+    care sunt redusi prin operatii de prelucrare a arborilor. Dupa ce s-au 
+    prelucrat toti tokenii, pe stiva se afla 2 noduri: primul este nodul 
+    MainNode, iar al doilea este restul arborelui de parsare. Acestia se vor 
+    lega, iar pe stiva va ramane doar radacina arborelui de parsare. In cazul 
+    in care unele operatii nu se pot realiza (e.g. nu se poate lega un nod if 
+    de o operatie aritmetica drept conditie) se arunca o eroare de parsare. 
+    Parantezele sunt un token special care este fie de tip aritmetic (daca 
+    are drept copil o operatie aritmetica), fie de tip boolean (daca are drept
+    copil o operatie booleana).
+    
+  Tipuri de expresii
+    Fiecare nod din stiva este de tip Expression sau un derivat al acestuia. 
+    Expresiile sunt de 5 tipuri:
+      > MainNode - reprezinta nodul radacina al arborelui de parsare. Acesta 
+                  este unic si este pus pe stiva atunci cand se intalneste 
+                  lista de variablie (mai exact, la prelucrarea keyword-ului 
+                  `int`). Acesta contine codul care urmeaza a fi executat si 
+                  lista de variabile retinuta intr-un HashMap.
+      > BracketNode - reprezinta nodul pentru paranteze. Acesta este un tip 
+                  special deoarece o paranteza poate sa fie de tipul GENERIC, 
+                  ARITHMETIC sau BOOLEAN, iar tipul se stabileste in timpul 
+                  parsarii (cu alte cuvinte, o paranteza initial este GENERIC,
+                  iar daca se intalneste o expresie aritmetica devine de tip 
+                  ARITHMETIC sau daca se intalneste o expresie booleana devine
+                  de tip BOOLEAN).
+      > ArithExpression - reprezinta expresii aritmetice precum PLUS, DIV, 
+                  INTEGER, VARIABLE.
+      > BoolExpression - reprezinta expresii booleene precum AND, NOT, true, 
+                  false, GREATER.
+      > Statement - reprezinta noduri de control precum ASSIGN, BLOCK, IF, 
+                  WHILE, SEQUENCE.
+      
+    Fiecare expresie contine 2 metode care sunt utilizate pentru afisarea 
+    arborelui de parsare: Show(int level) si Show(). Ultima este un alias pentru
+    Show(0). Show(int level) genereaza un string, in mod recursiv, prin 
+    parcurgerea arborelui. De asemenea, fiecare expresie retine si linia din 
+    fisier in care se afla, pentru a putea indica linia in care exista erori.
+
+  Generarea Arborelui de Parsarea (AST)
+    Pentru generarea arborelui de parsare se foloseste o stiva care retine 
+    noduri de tipul Expression. Cand se intalneste un tocken care se potriveste 
+    cu o expresie regulata definita, acel tocken poate fie sa puna pe stiva un 
+    nod, fie sa reduca arborele; toate acestea dupa niste reguli. In continuare,
+    vor fi prezentate regulile, folosind urmatoarele notatii:
+      a, b, c, d, ... -> noduri de tipuri compatibile cu operatiile folosite
+      PLUS -> operatia de adunare, al cauri corespondent in cod este PlusNode
+      DIV -> operatie de impartire, al carui corespondent este DivNode
+      AND -> operatia SI logic, al carui corespondent este AndNode
+      NOT -> operatia NU logic, al carui corespondent este NotNode
+      GREATER -> semnul '>', al carui corespondent este GreaterNode
+      OPEN_BRACKET -> paranteza deschisa '(', dar totodata si '(<expresie>)'
+      CLOSE_BRACKET -> paranteza inchisa ')'
+      OPEN_BLOCK -> acolada deschisa '{', dar totodata si '{<statements>}'
+      CLOSE_BLOCK -> acolada inchisa '}'
+      IF -> nod de tip IfNode
+      ELSE -> nod auxiliar de tip ElseNode
+      WHILE -> nod de tip WhileNode
+      SEQ -> secventa de instructiuni (SequenceNode)
+      Stmt, Stmt1, Stmt2, etc => Statements
+      ASSIGN -> Semnul '=', echivalent cu AssignmentNode
+
+    Stiva va fi reprezentata astfel:
+                            # a b c d ...
+
+      unde # -> inceputul stivei (nu este neaparat sa fie siva goala)
+           a, b, c, d, ... -> noduri de pe stiva
+
+    Varful stivei va reprezenta nodul citit curent (in implementare nu este 
+    pus pe stiva, pentru a face implementarea mai usoara, dar functionalitatea 
+    este aceeasi).
+
+    Simbolul '=>' este utilizat pentru a arata tranzitia (transformarea) de la 
+    o stare la alta.
+
+    Simbolul '=>*' reprezinta zero sau mai multi pasi.
+
+    Urmatoarele figuri reprezinta nodul PLUS pus pe stiva care are copii `a` 
+    si `b`, respectiv nodul OPEN_BRACKET care are `c` drept copil:
+              #  PLUS                         # OPEN_BRACKET
+                 /  \                                 |
+                a    b                                c
+
+
+    REGULI: 
+    1.a) Expresia: a + b
+        # a PLUS b  =>  # PLUS
+                          /  \
+                         a    b
+
+    1.b) Expresia: a + b + c
+        # PLUS PLUS c  =>  # PLUS
+          /  \               /  \
+         a    b           PLUS   c
+                          / \
+                         a   b
+
+    2.a) Expresia: a / b
+        # a DIV b  =>  # DIV
+                        /  \
+                       a    b
+
+    2.b) Expresia: a / b / c
+        # DIV DIV c  =>  # DIV
+         /  \             /  \
+        a    b          DIV   c
+                        / \
+                       a   b
+
+    3.a) Expresia: a + b / c
+        # PLUS DIV c  =>   # PLUS
+          /  \               /  \
+         a    b             a   DIV   
+                                / \
+                               b   c
+    
+    3.b) Expresia: a / b + c
+        #  DIV PLUS c  =>   # PLUS
+          /  \                /  \
+         a    b             DIV   c  
+                            / \
+                           a   b  
+    
+    4) Expresia: OPEN_BRACKET a CLOSE_BRACKET
+        # OPEN_BRACKET a  =>  # OPEN_BRACKET
+                                    |
+                                    a
+    
+    5.a) Expresia: a AND b
+        # a AND b  =>  # AND
+                        /  \
+                       a    b
+
+    5.b) Expresia: a AND b AND c
+        # AND AND c  =>  # AND
+         /  \             /  \
+        a    b          AND   c
+                        / \
+                       a   b
+
+    6.a) Expresia: NOT a
+        # NOT a  =>  # NOT
+                        |
+                        a
+   
+    6.b) Expresia: NOT NOT a
+        # NOT NOT a  => # NOT NOT => # NOT 
+                               |        |
+                               a       NOT
+                                        |
+                                        a
+
+    7) Expresia: a AND NOT b
+        # a AND NOT b  =>  #   AND 
+                              /  \
+                             a   NOT
+                                  |
+                                  b
+
+      Se poate observa ca expresia NOT a AND b este parsata corect:
+        # NOT a  =>*  # NOT AND b  =>  # AND 
+                         |               /  \
+                         a              NOT  b
+                                         |
+                                         a
+    
+    8.a) Expresia: a GREATER b
+        # a GREATER b  =>  # GREATER
+                              /   \
+                             a     b
+
+    8.b) Expresia: a GREATER b PLUS c
+        # GREATER PLUS c  =>  # GREATER
+           /   \                 /   \
+          a     b               a    PLUS 
+                                     /  \
+                                    b    c
+
+    8.c) Expresia: a GREATER b PLUS c PLUS d
+        #  GREATER  PLUS d  => # GREATER   
+           /   \                  /   \
+          a    PLUS              a    PLUS
+               /  \                   /  \
+              b    c                PLUS  d
+                                    /  \
+                                   b    c
+
+    8.d) Expresia: a GREATER b PLUS c DIV d
+        #  GREATER  DIV d  =>  # GREATER   
+           /   \                  /   \
+          a    PLUS              a    PLUS
+               /  \                   /  \
+              b    c                 b   DIV  
+                                        /  \
+                                       c    d           
+    
+    8.e) Expresia: a GREATER b DIV c
+        # GREATER DIV c  =>  # GREATER
+           /   \                /   \
+          a     b              a     DIV 
+                                    /  \
+                                   b    c
+
+    8.f) Expresia: a GREATER b DIV c PLUS d
+        #  GREATER  PLUS d  => #  GREATER   
+           /   \                   /   \
+          a    DIV                a    PLUS
+               /  \                    /  \
+              b    c                 DIV   d
+                                     /  \
+                                    b    c
+
+    8.g) Expresia: a GREATER b DIV c DIV d
+        #  GREATER  DIV d  => # GREATER   
+           /   \                 /   \
+          a    DIV              a    DIV
+               /  \                  /  \
+              b    c               DIV   d
+                                  /  \
+                                 b    c      
+
+    9) Nested Rules
+    9.a) Expresia: NOT a GREATER b OPERATOR c
+        # NOT OPERATOR c  => #  NOT
+           |                     |
+        GREATER               GREATER
+          /  \                 /   \
+         a    b               a    REZULTAT
+
+      unde REZULTAT - este rezultatul aplicarii unei reguli de la 8) confirm cu 
+                      tipul lui b
+           OPERATOR - poate fi PLUS sau DIV
+
+    9.b) Expresia: NOT ... NOT EXPRESIE OPERATOR a
+        # NOT OPERATOR a  =>  # NOT 
+           |                     |
+          ...                   ...
+           |                     |
+          NOT                   NOT
+           |                     |
+        EXPRESIE              REZULTAT
+
+      unde EXPRESIE - este o expresie aritmetica
+           OPERATOR - poate fi PLUS sau DIV sau AND sau NOT
+           REZULTAT - este rezultatul aplicarii regulii pentru: 
+                      # EXPRESIE OPERATOR a 
+     
+    9.c) Expresia a AND b GREATER c OPERATOR d
+        # AND  OPERATOR d  =>  # AND 
+          / \                   /  \
+         a   GREATER           a   GREATER
+               /  \                  /  \
+              b    c                b   REZULTAT
+
+      unde REZULTAT - este rezultatul aplicarii unei reguli de la 8) confirm cu 
+                      tipul lui b
+           OPERATOR - poate fi PLUS sau DIV      
+
+    9.d) Expresia: a AND b AND ... EXPRESIE OPERATOR c
+        # AND OPERATOR c  =>  # AND  
+         /  \                  /  \
+        a   AND               a   AND
+            /  \                  /  \
+           b   ...               b   ...
+                 \                     \
+                EXPRESIE             REZULTAT
+
+      unde EXPRESIE - este o expresie aritmetica
+           OPERATOR - poate fi PLUS sau DIV sau AND sau NOT
+           REZULTAT - este rezultatul aplicarii regulii pentru: 
+                      # EXPRESIE OPERATOR c
+    
+    10.a) Expresia: IF OPEN_BRACKET OPEN_BLOCK ELSE OPEN_BLOCK
+       # IF OPEN_BRACKET OPEN_BLOCK ELSE OPEN_BLOCK  =>  #     IF
+                                                          /     |    \ 
+                                              OPEN_BRACKET OPEN_BLOCK OPEN_BLOCK
+
+    10.b) Expresia: WHILE OPEN_BRACKET OPEN_BLOCK
+        # WHILE OPEN_BRACKET OPEN_BLOCK  =>  #    WHILE
+                                                 /     \
+                                       OPEN_BRACKET   OPEN_BLOCK
+
+    10.c) Expresia: OPEN_BLOCK OPEN_BLOCK
+        # OPEN_BLOCK OPEN_BLOCK =>  # SEQ
+                                     /   \
+                             OPEN_BLOCK  OPEN_BLOCK
+        
+        Aceasta regula se aplica pentru secvente de forma "{}{}", indiferent
+        daca acoladele au continut sau nu.
+
+    10.d) Expresia: a b OPEN_BLOCK
+        #  SEQ OPEN_BLOCK   =>   # SEQ
+           / \                     /  \
+          a   b                   a   SEQ
+                                      /  \
+                                     b   OPEN_BLOCK
+
+    10.e) Expresia: a b c Stmt
+        # SEQ Stmt => # SEQ----->SEQ Stmt =>* # SEQ 
+          / \           /        / \            / \
+         a   SEQ       a        b   c          a  SEQ
+             / \                                  / \
+            b   c                                b   REZULTAT
+
+        Primul SEQ este parintele celui de-al doilea SEQ. Aceasta regula spune 
+        ca se pune copilul din dreapta pe stiva, fara rupere de legaturi.
+        REZULTAT reprezinta rezultatul reducerii.
+    
+    10.f) Expresia: a b Stmt
+        # SEQ Stmt  =>  # SEQ
+          / \             / \
+         a   b           a  SEQ
+                            /  \
+                           b   Stmt
+
+    10.g) Expresia: Stmt1 Stmt2
+        # Stmt1 Stmt2  =>  # SEQ 
+                             /  \
+                         Stmt1  Stmt2
+    
+    11) Expresia: a ASSIGN b ;
+        # a ASSIGN b ; => # ASSIGN
+                            /   \
+                           a     b
+
+    12.a) Expresia: OPEN_BLOCK OPEN_BLOCK CLOSE_BLOCK CLOSE_BLOCK
+        # OPEN_BLOCK OPEN_BLOCK CLOSE_BLOCK CLOSE_BLOCK => OPEN_BLOCK
+                                                               |
+                                                           OPEN_BLOCK 
+
+      Aceasta regula difera de regula 10.c) prin faptul ca al doilea OPEN_BLOCK 
+      trebuie sa fie complet, iar primul nu (e.g.: "{{}}" in care al doilea 
+      set de acolade reprezinta un copil pentru primul set de acolate).
+
+    12.b) Expresia: OPEN_BLOCK Stmt CLOSE_BLOCK
+        # OPEN_BLOCK Stmt CLOSE_BLOCK => OPEN_BLOCK
+                                             |
+                                            Stmt
+            
+      Aceasta regula adauga statement in block.
+
+    Urmand aceste reguli se obtine un arbore corect sintactic. Practic, 
+    programul este un automat push-down cu o sitva care accepta un text care 
+    reprezinta un cod scris in limbajul IMP. Automatul se blocheaza atunci cand
+    fie este aruncata o eroare, fie atunci cand stiva nu are un singur element.
+    Parsarea se termina cu succes atunci cand stiva are un singur nod si 
+    acesta este de tip MainNode.
+
+    De asemenea, daca nu se regaseste o variabila in lista de variabile, se 
+    parsarea va continua, dar compiationError va fi setat pe true.
+
+  Rularea programului parsat
+    Rularea programului presupune defapt parcurgerea arborelui si executarea 
+    nodurilor in mod corespunzator. Pentru aceasta se foloseste un visitor care 
+    parcurge acest graf si care executa codul. Clasa ExpressionVisitor 
+    reprezinta implementarea pentru visitor. Acesta este acceptat de noduri, 
+    caz in care se executa instructiunea. Daca apare eroare, aceasta esta 
+    aruncata si se opreste executia. Fiecare metoda de accept returneaza 
+    rezultatul operatiei ca in cazul operatiilor aritmetice sau booleene, sau
+    nu returneaza nimic, ca in cazul rularii secventelor (if, while, assign, 
+    etc). Pentru paranteze, exista 2 metode de accept: acceptA pentru a executa 
+    copii de tip aritmetic si acceptB pentru a executa copii de tip booleeni.
+
+  Rularea programului
+    Programul parseaza fisierul de input; daca nu exista erori se scrie arborele
+    in fisier; se ruleaza programul si apoi se scriu valorile variabilelor in 
+    fisierul de output, sau eroarea care apare.
+    
